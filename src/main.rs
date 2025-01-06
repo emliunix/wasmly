@@ -1,33 +1,7 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Ty {
-    I32,
-    I64,
-    F32,
-    F64,
-    Func(Vec<Ty>, Vec<Ty>),
-}
+mod cont;
+mod types;
 
-pub enum Instr {
-    Unreachable,
-    I32Const(i32),
-    I32Add,
-    I32Eq,
-    LocalTee(usize),
-    LocalGet(usize),
-    Br(usize),
-    If(Ty, Vec<Instr>, Vec<Instr>),
-    Loop(Ty, Vec<Instr>),
-    Block(Ty, Vec<Instr>),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum Val {
-    I32(i32),
-    I64(i64),
-    F32(f32),
-    F64(f64),
-    NULL(Ty),
-}
+use types::*;
 
 enum Label {
     Empty(usize, Vec<usize>),
@@ -221,6 +195,10 @@ impl VM {
                     self.push_i32(0);
                 }
             }
+            &Instr::LocalSet(i) => {
+                let v = stack_val!(self.pop());
+                self.locals[i] = v.clone();
+            },
             &Instr::LocalTee(i) => {
                 let v = stack_val!(self.pop());
                 self.locals[i] = v.clone();
@@ -243,19 +221,19 @@ impl VM {
                 }
                 cursor_updated = true;
             },
-            Instr::Loop(ty, instrs) => {
-                self.push(StackItem::Label(Label::Continuation(n_func_rets(ty), cursor.pos())));
+            Instr::Loop(bt, instrs) => {
+                self.push(StackItem::Label(Label::Continuation(block_type(bt).func_tys().0.len(), cursor.pos())));
                 cursor.push_instrs(instrs);
                 cursor_updated = true;
             },
-            Instr::Block(ty, instrs) => {
-                self.push(StackItem::Label(Label::Empty(n_func_rets(ty), cursor.pos())));
+            Instr::Block(bt, instrs) => {
+                self.push(StackItem::Label(Label::Empty(block_type(bt).func_tys().1.len(), cursor.pos())));
                 cursor.push_instrs(instrs);
                 cursor_updated = true;
             },
-            Instr::If(ty, instrs_then, instrs_else) => {
+            Instr::If(bt, instrs_then, instrs_else) => {
                 let b = self.pop_i32();
-                self.push(StackItem::Label(Label::Empty(n_func_rets(ty), cursor.pos())));
+                self.push(StackItem::Label(Label::Empty(block_type(bt).func_tys().1.len(), cursor.pos())));
                 if b != 0 {
                     cursor.push_instrs(instrs_then);
                 } else {
@@ -354,7 +332,7 @@ mod tests {
         let mut vm = VM::new();
         vm.run(&vec![
             Instr::Block(
-                Ty::Func(vec![], vec![Ty::I32]),
+                BlockType::ValTy(Ty::I32),
                 vec![
                     Instr::I32Const(1),
                     Instr::I32Const(1),
@@ -368,20 +346,22 @@ mod tests {
     pub fn test_loop() {
         let mut vm = VM::new();
         vm.run(&vec![
-            Instr::Block(Ty::Func(vec![], vec![Ty::I32]), vec![
-                Instr::I32Const(1),
-                Instr::Loop(Ty::Func(vec![Ty::I32], vec![]), vec![
+            Instr::Block(BlockType::Empty, vec![
+                Instr::Loop(BlockType::Empty, vec![
+                    Instr::LocalGet(0),
                     Instr::I32Const(1),
                     Instr::I32Add,
+                    Instr::LocalTee(0),
                     Instr::I32Const(3),
                     Instr::I32Eq,
-                    Instr::If(Ty::Func(vec![], vec![]), vec![
+                    Instr::If(BlockType::Empty, vec![
                         Instr::Br(1),
                     ], vec![
                         Instr::Br(0),
                     ]),
                 ])
             ]),
+            Instr::LocalGet(0),
         ]);
         assert_eq!(Some(Val::I32(2)), vm.result());
     }
