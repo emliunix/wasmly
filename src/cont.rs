@@ -80,10 +80,7 @@ impl Instance {
                                 vs.push(Val::I32(if a == b { 1 } else { 0 }));
                                 Plain(es_next, k)
                             },
-                            &Instr::LocalTee(i) => {
-                                self.locals[i] = vs.last().unwrap().clone();
-                                Plain(es_next, k)
-                            },
+                            &Instr::LocalTee(i) => { self.locals[i] = vs.last().unwrap().clone(); Plain(es_next, k) },
                             &Instr::LocalSet(i) => { self.locals[i] = vs.pop().unwrap().clone(); Plain(es_next, k) },
                             &Instr::LocalGet(i) => { vs.push(self.locals[i].clone()); Plain(es_next, k) },
                             &Instr::Br(n) => {
@@ -91,12 +88,15 @@ impl Instance {
                                 Breaking(n, vs, k)
                             },
                             Instr::If(bt, es_then, es_else) => {
-                                let bt = block_type(bt);
-                                let (_, res_ty) = bt.func_tys();
+                                let (n_args, n_res) = {
+                                    let bt = block_type(&self.types, bt);
+                                    let (args_ty, res_ty) = bt.func_tys();
+                                    (args_ty.len(), res_ty.len())
+                                };
                                 let i = val_i32(&mut vs);
-                                let vs = std::mem::replace(&mut vs, Vec::new());
+                                let vs = vs.drain(..vs.len()-n_args).collect::<Vec<_>>();
                                 let k = Plain(es_next, k);
-                                let k = Label(res_ty.len(), vs, None, Box::new(k));
+                                let k = Label(n_res, vs, None, Box::new(k));
                                 if i != 0 {
                                     Plain(&es_then[..], Box::new(k))
                                 } else {
@@ -104,19 +104,25 @@ impl Instance {
                                 }
                             },
                             Instr::Loop(bt, es_loop) => {
-                                let bt = block_type(bt);
-                                let (args_ty, _) = bt.func_tys();
-                                let vs = std::mem::replace(&mut vs, Vec::new());
+                                let (n_args, _) = {
+                                    let bt = block_type(&self.types, bt);
+                                    let (args_ty, res_ty) = bt.func_tys();
+                                    (args_ty.len(), res_ty.len())
+                                };
+                                let vs = vs.drain(..vs.len()-n_args).collect::<Vec<_>>();
                                 let k = if es_next.len() > 0 { Plain(es_next, k) } else { *k };
-                                let k = Box::new(Label(args_ty.len(), vs, Some(&es[..1]), Box::new(k)));
+                                let k = Box::new(Label(n_args, vs, Some(&es[..1]), Box::new(k)));
                                 Plain(&es_loop[..], k)
                             },
                             Instr::Block(bt, es) => {
-                                let bt = block_type(bt);
-                                let (_, res_ty) = bt.func_tys();
-                                let vs = std::mem::replace(&mut vs, Vec::new());
+                                let (n_args, n_res) = {
+                                    let bt = block_type(&self.types, bt);
+                                    let (args_ty, res_ty) = bt.func_tys();
+                                    (args_ty.len(), res_ty.len())
+                                };
+                                let vs = vs.drain(..vs.len()-n_args).collect::<Vec<_>>();
                                 let k = Plain(es_next, k);
-                                let k = Box::new(Label(res_ty.len(), vs, None, Box::new(k)));
+                                let k = Box::new(Label(n_res, vs, None, Box::new(k)));
                                 Plain(&es[..], k)
                             },
                         }

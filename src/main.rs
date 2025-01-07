@@ -152,6 +152,7 @@ struct VM {
     halt: bool,
     // move this into stack frame
     locals: Vec<Val>,
+    types: Vec<Ty>,
 }
 
 impl VM {
@@ -160,6 +161,7 @@ impl VM {
             stack: vec![],
             halt: false, // should be a thread state
             locals: vec![Val::I32(0)],
+            types: vec![],
         }
     }
 
@@ -222,18 +224,18 @@ impl VM {
                 cursor_updated = true;
             },
             Instr::Loop(bt, instrs) => {
-                self.push(StackItem::Label(Label::Continuation(block_type(bt).func_tys().0.len(), cursor.pos())));
+                self.push(StackItem::Label(Label::Continuation(block_type(&self.types, bt).func_tys().0.len(), cursor.pos())));
                 cursor.push_instrs(instrs);
                 cursor_updated = true;
             },
             Instr::Block(bt, instrs) => {
-                self.push(StackItem::Label(Label::Empty(block_type(bt).func_tys().1.len(), cursor.pos())));
+                self.push(StackItem::Label(Label::Empty(block_type(&self.types, bt).func_tys().1.len(), cursor.pos())));
                 cursor.push_instrs(instrs);
                 cursor_updated = true;
             },
             Instr::If(bt, instrs_then, instrs_else) => {
                 let b = self.pop_i32();
-                self.push(StackItem::Label(Label::Empty(block_type(bt).func_tys().1.len(), cursor.pos())));
+                self.push(StackItem::Label(Label::Empty(block_type(&self.types, bt).func_tys().1.len(), cursor.pos())));
                 if b != 0 {
                     cursor.push_instrs(instrs_then);
                 } else {
