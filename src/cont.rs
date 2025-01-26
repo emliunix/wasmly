@@ -65,27 +65,32 @@ impl Instance {
                     _ => {
                         let e = &es[0];
                         let es_next = &es[1..];
+                        let k = if !es_next.is_empty() {
+                            Plain(es_next, k)
+                        } else {
+                            *k
+                        };
                         match e {
                             Instr::Unreachable => Trap,
-                            &Instr::I32Const(i) => { vs.push(Val::I32(i)); Plain(es_next, k) },
+                            &Instr::I32Const(i) => { vs.push(Val::I32(i)); k },
                             Instr::I32Add => {
                                 let a = val_i32(&mut vs);
                                 let b = val_i32(&mut vs);
                                 vs.push(Val::I32(a + b));
-                                Plain(es_next, k)
+                                k
                             },
                             Instr::I32Eq => {
                                 let a = val_i32(&mut vs);
                                 let b = val_i32(&mut vs);
                                 vs.push(Val::I32(if a == b { 1 } else { 0 }));
-                                Plain(es_next, k)
+                                k
                             },
-                            &Instr::LocalTee(i) => { self.locals[i] = vs.last().unwrap().clone(); Plain(es_next, k) },
-                            &Instr::LocalSet(i) => { self.locals[i] = vs.pop().unwrap().clone(); Plain(es_next, k) },
-                            &Instr::LocalGet(i) => { vs.push(self.locals[i].clone()); Plain(es_next, k) },
+                            &Instr::LocalTee(i) => { self.locals[i] = vs.last().unwrap().clone(); k },
+                            &Instr::LocalSet(i) => { self.locals[i] = vs.pop().unwrap().clone(); k },
+                            &Instr::LocalGet(i) => { vs.push(self.locals[i].clone()); k },
                             &Instr::Br(n) => {
                                 let vs = std::mem::replace(&mut vs, Vec::new());
-                                Breaking(n, vs, k)
+                                Breaking(n, vs, Box::new(k))
                             },
                             Instr::If(bt, es_then, es_else) => {
                                 let (n_args, n_res) = {
@@ -95,7 +100,6 @@ impl Instance {
                                 };
                                 let i = val_i32(&mut vs);
                                 let vs = vs.drain(..vs.len()-n_args).collect::<Vec<_>>();
-                                let k = Plain(es_next, k);
                                 let k = Label(n_res, vs, None, Box::new(k));
                                 if i != 0 {
                                     Plain(&es_then[..], Box::new(k))
@@ -110,7 +114,6 @@ impl Instance {
                                     (args_ty.len(), res_ty.len())
                                 };
                                 let vs = vs.drain(..vs.len()-n_args).collect::<Vec<_>>();
-                                let k = if es_next.len() > 0 { Plain(es_next, k) } else { *k };
                                 let k = Box::new(Label(n_args, vs, Some(&es[..1]), Box::new(k)));
                                 Plain(&es_loop[..], k)
                             },
@@ -121,7 +124,6 @@ impl Instance {
                                     (args_ty.len(), res_ty.len())
                                 };
                                 let vs = vs.drain(..vs.len()-n_args).collect::<Vec<_>>();
-                                let k = Plain(es_next, k);
                                 let k = Box::new(Label(n_res, vs, None, Box::new(k)));
                                 Plain(&es[..], k)
                             },
