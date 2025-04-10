@@ -29,3 +29,7 @@ Flows are sharded on different nodes, so a typical cluster of services behind an
 After studying how people architect distributed systems. I think I have finally come to a rough working solution.
 
 That's to store versioned sharding topology in raft. And having 2 clusters: 1. the workflow nodes run the workflow. 2. the API nodes watch tasks and dispatch task results to the belonging node.
+
+### Forwarder
+
+Amazon Aurora added write forwarder capability since a version. I think we can use the same technique to eliminate the need of API nodes dual functioning as an API service and forward requests to the responsible node.
