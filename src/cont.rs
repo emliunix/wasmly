@@ -71,6 +71,10 @@ impl Instance {
                     };
                     match e {
                         Instr::Unreachable => Trap,
+                        Instr::Nop => k,
+                        Instr::Drop => {
+                            todo!("drop instruction")
+                        }
                         &Instr::I32Const(i) => {
                             vs.push(Val::I32(i));
                             k
@@ -80,6 +84,12 @@ impl Instance {
                             let b = val_i32(&mut vs);
                             vs.push(Val::I32(a + b));
                             k
+                        }
+                        Instr::I32Sub => {
+                            todo!("i32.sub instruction")
+                        }
+                        Instr::I32Mul => {
+                            todo!("i32.mul instruction")
                         }
                         Instr::I32Eq => {
                             let a = val_i32(&mut vs);

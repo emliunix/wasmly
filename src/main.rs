@@ -184,11 +184,21 @@ impl VM {
         // execute instr
         match instr {
             Instr::Unreachable => {}
+            Instr::Nop => {}
+            Instr::Drop => {
+                todo!("drop instruction")
+            }
             Instr::I32Const(i) => self.push_i32(i.clone()),
             Instr::I32Add => {
                 let i1 = self.pop_i32();
                 let i2 = self.pop_i32();
                 self.push_i32(i1 + i2);
+            }
+            Instr::I32Sub => {
+                todo!("i32.sub instruction")
+            }
+            Instr::I32Mul => {
+                todo!("i32.mul instruction")
             }
             Instr::I32Eq => {
                 let a = self.pop_i32();

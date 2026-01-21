@@ -131,9 +131,13 @@ pub enum BlockType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instr {
     Unreachable,
+    Nop,
     I32Const(i32),
     I32Add,
+    I32Sub,
+    I32Mul,
     I32Eq,
+    Drop,
     LocalTee(usize),
     LocalGet(usize),
     LocalSet(usize),

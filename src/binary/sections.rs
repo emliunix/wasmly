@@ -1,6 +1,7 @@
 use crate::binary::error::{Located, ParseResult};
 use crate::binary::primitives::parse_byte;
-use crate::types::{FuncType, Limits, MemType, RefType, TableType, ValType};
+use crate::module::{Code, Expr};
+use crate::types::{FuncType, Instr, Limits, MemType, RefType, TableType, ValType};
 use nom::bytes::complete::take;
 
 type Input<'a> = &'a [u8];
@@ -97,6 +98,18 @@ pub fn parse_type_section(input: Input) -> ParseResult<'_, Vec<FuncType>> {
 }
 
 // ============================================================================
+// Section 3: Function Section
+// ============================================================================
+
+/// Parse the function section: vec(typeidx)
+pub fn parse_function_section(input: Input) -> ParseResult<'_, Vec<u32>> {
+    parse_vec(input, |input| {
+        let (remaining, typeidx) = parse_leb128_u32(input)?;
+        Ok((remaining, typeidx.value))
+    })
+}
+
+// ============================================================================
 // Section 4: Table Section
 // ============================================================================
 
@@ -148,7 +161,115 @@ pub fn parse_memtype(input: Input) -> ParseResult<'_, MemType> {
 }
 
 // ============================================================================
-// LEB128 Parser (helper)
+// Section 10: Code Section
+// ============================================================================
+
+/// Parse a locals declaration: count:u32 valtype
+pub fn parse_locals(input: Input) -> ParseResult<'_, Vec<ValType>> {
+    let (remaining, count) = parse_leb128_u32(input)?;
+    let (remaining, valtype) = parse_valtype(remaining)?;
+
+    // Expand count into a vec of repeated valtypes
+    let locals = vec![valtype; count.value as usize];
+    Ok((remaining, locals))
+}
+
+/// Parse instructions until 0x0B (end) is reached
+/// For now, we'll implement a subset of instructions to get started
+pub fn parse_instructions(input: Input) -> ParseResult<'_, Vec<Instr>> {
+    let mut remaining = input;
+    let mut instrs = Vec::new();
+
+    loop {
+        let (rest, opcode) = parse_byte(remaining)?;
+        remaining = rest;
+
+        match opcode.value {
+            0x0B => break, // end
+            0x01 => {
+                // nop
+                instrs.push(Instr::Nop);
+            }
+            0x1A => {
+                // drop
+                instrs.push(Instr::Drop);
+            }
+            0x20 => {
+                // local.get
+                let (rest, idx) = parse_leb128_u32(remaining)?;
+                remaining = rest;
+                instrs.push(Instr::LocalGet(idx.value as usize));
+            }
+            0x21 => {
+                // local.set
+                let (rest, idx) = parse_leb128_u32(remaining)?;
+                remaining = rest;
+                instrs.push(Instr::LocalSet(idx.value as usize));
+            }
+            0x41 => {
+                // i32.const
+                let (rest, value) = parse_leb128_i32(remaining)?;
+                remaining = rest;
+                instrs.push(Instr::I32Const(value.value));
+            }
+            0x6A => {
+                // i32.add
+                instrs.push(Instr::I32Add);
+            }
+            0x6B => {
+                // i32.sub
+                instrs.push(Instr::I32Sub);
+            }
+            0x6C => {
+                // i32.mul
+                instrs.push(Instr::I32Mul);
+            }
+            _ => {
+                // Unsupported opcode for now
+                return Err(nom::Err::Error(nom::error::Error {
+                    input,
+                    code: nom::error::ErrorKind::Tag,
+                }));
+            }
+        }
+    }
+
+    Ok((remaining, instrs))
+}
+
+/// Parse an expression (instructions ending with 0x0B)
+pub fn parse_expr(input: Input) -> ParseResult<'_, Expr> {
+    let (remaining, instrs) = parse_instructions(input)?;
+    Ok((remaining, Expr { instrs }))
+}
+
+/// Parse a code entry: size:u32 code
+pub fn parse_code(input: Input) -> ParseResult<'_, Code> {
+    let (remaining, size) = parse_leb128_u32(input)?;
+    let size_val = size.value as usize;
+
+    // Take exactly 'size' bytes for the code body
+    let (rest, code_bytes) = take(size_val)(remaining)?;
+
+    // Parse the code body starting from the beginning of code_bytes
+    let (after_locals, locals_vec) = parse_vec(code_bytes, parse_locals)?;
+
+    // Flatten the vec of vecs into a single vec
+    let locals: Vec<ValType> = locals_vec.into_iter().flatten().collect();
+
+    // Parse body from after the locals to the end
+    let (_, body) = parse_expr(after_locals)?;
+
+    Ok((rest, Code { locals, body }))
+}
+
+/// Parse the code section: vec(code)
+pub fn parse_code_section(input: Input) -> ParseResult<'_, Vec<Code>> {
+    parse_vec(input, parse_code)
+}
+
+// ============================================================================
+// LEB128 Parser (helpers)
 // ============================================================================
 
 fn parse_leb128_u32(input: Input) -> ParseResult<'_, Located<u32>> {
@@ -167,6 +288,43 @@ fn parse_leb128_u32(input: Input) -> ParseResult<'_, Located<u32>> {
         result |= (value as u32) << shift;
 
         if byte[0] & 0x80 == 0 {
+            use crate::binary::error::SourceLocation;
+            let offset = 0;
+            let location = SourceLocation::new(offset, bytes_consumed);
+            return Ok((remaining, Located::new(result, location)));
+        }
+
+        shift += 7;
+        if shift >= 32 {
+            return Err(nom::Err::Error(nom::error::Error {
+                input: base,
+                code: nom::error::ErrorKind::TooLarge,
+            }));
+        }
+    }
+}
+
+fn parse_leb128_i32(input: Input) -> ParseResult<'_, Located<i32>> {
+    let base = input;
+    let mut result: i32 = 0;
+    let mut shift: u32 = 0;
+    let mut remaining = input;
+    let mut bytes_consumed = 0;
+
+    loop {
+        let (rest, byte) = take(1usize)(remaining)?;
+        remaining = rest;
+        bytes_consumed += 1;
+
+        let value = (byte[0] & 0x7F) as i32;
+        result |= value << shift;
+
+        if byte[0] & 0x80 == 0 {
+            // Sign extend if necessary
+            if shift < 32 && (byte[0] & 0x40) != 0 {
+                result |= !0 << (shift + 7);
+            }
+
             use crate::binary::error::SourceLocation;
             let offset = 0;
             let location = SourceLocation::new(offset, bytes_consumed);
@@ -374,5 +532,141 @@ mod tests {
         let (_, memtype) = parse_memtype(&input).unwrap();
         assert_eq!(memtype.limits.min, 1);
         assert_eq!(memtype.limits.max, None);
+    }
+
+    // Function Section Tests
+
+    #[test]
+    fn test_parse_function_section_empty() {
+        // 0x00 (0 functions)
+        let input = [0x00];
+        let (_, functions) = parse_function_section(&input).unwrap();
+        assert_eq!(functions.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_function_section_single() {
+        // 0x01 (1 function), 0x00 (type index 0)
+        let input = [0x01, 0x00];
+        let (_, functions) = parse_function_section(&input).unwrap();
+        assert_eq!(functions.len(), 1);
+        assert_eq!(functions[0], 0);
+    }
+
+    #[test]
+    fn test_parse_function_section_multiple() {
+        // 0x03 (3 functions), 0x00 0x01 0x00 (type indices)
+        let input = [0x03, 0x00, 0x01, 0x00];
+        let (_, functions) = parse_function_section(&input).unwrap();
+        assert_eq!(functions.len(), 3);
+        assert_eq!(functions[0], 0);
+        assert_eq!(functions[1], 1);
+        assert_eq!(functions[2], 0);
+    }
+
+    // Code Section Tests
+
+    #[test]
+    fn test_parse_instructions_nop() {
+        // 0x01 (nop), 0x0B (end)
+        let input = [0x01, 0x0B];
+        let (_, instrs) = parse_instructions(&input).unwrap();
+        assert_eq!(instrs.len(), 1);
+        assert!(matches!(instrs[0], Instr::Nop));
+    }
+
+    #[test]
+    fn test_parse_instructions_i32_const() {
+        // 0x41 (i32.const), 0x2A (42), 0x0B (end)
+        let input = [0x41, 0x2A, 0x0B];
+        let (_, instrs) = parse_instructions(&input).unwrap();
+        assert_eq!(instrs.len(), 1);
+        assert!(matches!(instrs[0], Instr::I32Const(42)));
+    }
+
+    #[test]
+    fn test_parse_instructions_i32_add() {
+        // 0x41 0x01 (i32.const 1)
+        // 0x41 0x02 (i32.const 2)
+        // 0x6A (i32.add)
+        // 0x0B (end)
+        let input = [0x41, 0x01, 0x41, 0x02, 0x6A, 0x0B];
+        let (_, instrs) = parse_instructions(&input).unwrap();
+        assert_eq!(instrs.len(), 3);
+        assert!(matches!(instrs[0], Instr::I32Const(1)));
+        assert!(matches!(instrs[1], Instr::I32Const(2)));
+        assert!(matches!(instrs[2], Instr::I32Add));
+    }
+
+    #[test]
+    fn test_parse_instructions_local_get() {
+        // 0x20 (local.get), 0x00 (local index 0), 0x0B (end)
+        let input = [0x20, 0x00, 0x0B];
+        let (_, instrs) = parse_instructions(&input).unwrap();
+        assert_eq!(instrs.len(), 1);
+        assert!(matches!(instrs[0], Instr::LocalGet(0)));
+    }
+
+    #[test]
+    fn test_parse_locals() {
+        // 0x02 (count = 2), 0x7F (i32)
+        let input = [0x02, 0x7F];
+        let (_, locals) = parse_locals(&input).unwrap();
+        assert_eq!(locals.len(), 2);
+        assert_eq!(locals[0], ValType::I32);
+        assert_eq!(locals[1], ValType::I32);
+    }
+
+    #[test]
+    fn test_parse_code_empty_function() {
+        // size: 0x02 (2 bytes)
+        // locals: 0x00 (no locals)
+        // body: 0x0B (end)
+        let input = [0x02, 0x00, 0x0B];
+        let (_, code) = parse_code(&input).unwrap();
+        assert_eq!(code.locals.len(), 0);
+        assert_eq!(code.body.instrs.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_code_with_locals() {
+        // size: 0x04 (4 bytes)
+        // locals: 0x01 (1 group), 0x02 (count = 2), 0x7F (i32)
+        // body: 0x0B (end)
+        let input = [0x04, 0x01, 0x02, 0x7F, 0x0B];
+        let (_, code) = parse_code(&input).unwrap();
+        assert_eq!(code.locals.len(), 2);
+        assert_eq!(code.locals[0], ValType::I32);
+        assert_eq!(code.locals[1], ValType::I32);
+    }
+
+    #[test]
+    fn test_parse_code_with_instructions() {
+        // size: 0x04 (4 bytes)
+        // locals: 0x00 (no locals)
+        // body: 0x41 0x2A (i32.const 42), 0x0B (end)
+        let input = [0x04, 0x00, 0x41, 0x2A, 0x0B];
+        let (_, code) = parse_code(&input).unwrap();
+        assert_eq!(code.locals.len(), 0);
+        assert_eq!(code.body.instrs.len(), 1);
+        assert!(matches!(code.body.instrs[0], Instr::I32Const(42)));
+    }
+
+    #[test]
+    fn test_parse_code_section_empty() {
+        // 0x00 (0 code entries)
+        let input = [0x00];
+        let (_, codes) = parse_code_section(&input).unwrap();
+        assert_eq!(codes.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_code_section_single() {
+        // 0x01 (1 code entry)
+        // size: 0x02, locals: 0x00, body: 0x0B
+        let input = [0x01, 0x02, 0x00, 0x0B];
+        let (_, codes) = parse_code_section(&input).unwrap();
+        assert_eq!(codes.len(), 1);
+        assert_eq!(codes[0].locals.len(), 0);
     }
 }
