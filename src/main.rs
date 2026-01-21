@@ -1,5 +1,6 @@
 mod binary;
 mod cont;
+mod module;
 mod types;
 
 use types::*;
