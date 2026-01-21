@@ -165,9 +165,85 @@ cargo clippy -- -D warnings
 - Clippy warnings for unused variables and dead code (use `_` prefix for intentional unused)
 - Two interpreter implementations (VM and Instance) - consolidate in future
 
+<<<<<<< HEAD
 ### Before Committing
 1. Run `cargo fmt` to format code
 2. Run `cargo test` to ensure all tests pass
 3. Run `cargo clippy -- -D warnings` to check for issues
 4. Review changes for unused code and variables
 5. Ensure tests cover new functionality
+=======
+**Completed:**
+- **LEB128 utilities** (`src/binary/leb128.rs`)
+  - `decode_u32()`, `decode_i32()` - Decode unsigned/signed 32-bit integers
+  - `encode_u32()`, `encode_i32()` - Encode integers to bytes
+  - Comprehensive test coverage for edge cases (0, 127, 128, max values, negative numbers)
+
+- **Binary primitives** (`src/binary/primitives.rs`) - ✅ ALL TESTS PASSING
+  - `parse_byte()` - Single byte parser with location tracking
+  - `parse_magic()` - Magic number validation (`\0asm`)
+  - `parse_version()` - Version validation (`1`)
+  - `parse_section_header()` - Parse section id and length with proper offset tracking
+  - `parse_name()` - Parse length-prefixed UTF-8 strings
+  - `parse_leb128_u32()` - Parse LEB128-encoded u32 values
+  - All 8 tests passing: byte, magic, version, leb128 (small/medium/large), name, section header
+  - Location tracking correctly reports offset (starting position) and length (bytes consumed)
+
+- **Error types** (`src/binary/error.rs`)
+  - `BinaryError` enum for common parse errors
+  - `ParseResult` type alias for nom IResult with source location tracking
+  - `Located<T>` wrapper providing source location for parsed values
+  - `SourceLocation` struct tracking offset and length in input stream
+
+- **Module data model** (`src/module.rs` and `src/types.rs`)
+  - Complete type system following WASM spec
+  - All 12 section structures (Type, Import, Function, Table, Memory, Global, Export, Start, Element, Code, Data, DataCount, Custom)
+  - Runtime structures (Store, ModuleInst, FuncInst, TableInst, MemInst, GlobalInst, ElemInst, DataInst)
+  - Embedder API skeleton with `todo!()` placeholders for future implementation
+  - Index types for type safety (TypeIdx, FuncIdx, TableIdx, MemIdx, GlobalIdx, etc.)
+
+**Documentation:**
+- `docs/binary-parsing-conventions.md` - General binary parsing patterns and conventions
+  - Input representation with byte slices
+  - Variable-length integer encoding (LEB128)
+  - Tag-based parsing, vectors, strings
+  - Error handling with location tracking
+  - Testing conventions and common patterns
+
+- `docs/wasm-spec-tests.md` - WebAssembly specification test suite guide
+  - Overview of 90+ test files in wasm-spec/test/core/
+  - Test file format (.wast) explanation
+  - Simple test cases with binary breakdowns
+  - Test organization by development phase
+  - Methods for extracting and using test cases
+  - Recommended test harness structure
+
+**Remaining:**
+- Section parsers (type, import, function, export, data, code sections)
+- Instruction parser mapping binary opcodes to `Instr` enum
+- Module-level parser orchestrating all sections
+- Integration with existing VM/Instance interpreters
+- Implementation of embedder API functions (module_decode, module_instantiate, func_invoke, etc.)
+
+### Module Structure
+
+The project follows a two-layer architecture for WASM modules:
+
+1. **Compile-time representation** (`Module` struct):
+   - Contains all 12 section types as defined in the WASM spec
+   - Sections: types, imports, functions, tables, memories, globals, exports, start, elements, code, data, data_count, customs
+   - Methods: `module_imports()`, `module_exports()`, `validate()` (to be implemented)
+
+2. **Runtime representation** (`ModuleInst` struct):
+   - Contains addresses (indices) into the Store for all runtime instances
+   - Represents an instantiated module with resolved imports
+
+3. **Store** (`Store` struct):
+   - Global runtime state holding all instances
+   - Contains vectors of: funcs, tables, mems, globals, elems, datas
+
+**Index Spaces**: 
+- Imports appear FIRST in each index space, followed by module-defined items
+- Example: Function index 0-n are imported functions, n+1 onwards are module functions
+- This is critical for correct resolution of indices during instantiation and execution
+>>>>>>> 6dbf3d6 (fix: resolve test compilation errors in binary parser primitives)

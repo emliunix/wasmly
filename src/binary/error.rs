@@ -1,6 +1,5 @@
 use nom::error::Error as NomError;
 use nom::IResult;
-use std::ops::Sub;
 
 pub type ParseResult<'a, O> = IResult<&'a [u8], O, NomError<&'a [u8]>>;
 
