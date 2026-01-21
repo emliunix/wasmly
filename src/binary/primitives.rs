@@ -5,7 +5,7 @@ type Input<'a> = &'a [u8];
 
 pub fn parse_byte(input: Input) -> ParseResult<'_, Located<u8>> {
     let (remaining, bytes) = take(1usize)(input)?;
-    let offset = 0;  // Parser starts at beginning of its input
+    let offset = 0; // Parser starts at beginning of its input
     let location = SourceLocation::new(offset, 1);
     Ok((remaining, Located::new(bytes[0], location)))
 }
@@ -22,7 +22,7 @@ pub fn parse_magic(input: Input) -> ParseResult<'_, Located<[u8; 4]>> {
         }));
     }
 
-    let offset = 0;  // Parser starts at beginning of its input
+    let offset = 0; // Parser starts at beginning of its input
     let location = SourceLocation::new(offset, 4);
     Ok((remaining, Located::new(magic, location)))
 }
@@ -39,7 +39,7 @@ pub fn parse_version(input: Input) -> ParseResult<'_, Located<[u8; 4]>> {
         }));
     }
 
-    let offset = 0;  // Parser starts at beginning of its input
+    let offset = 0; // Parser starts at beginning of its input
     let location = SourceLocation::new(offset, 4);
     Ok((remaining, Located::new(version, location)))
 }
@@ -47,15 +47,12 @@ pub fn parse_version(input: Input) -> ParseResult<'_, Located<[u8; 4]>> {
 pub fn parse_section_header(input: Input) -> ParseResult<'_, (Located<u8>, Located<u32>)> {
     let (remaining, id) = parse_byte(input)?;
     let (remaining, length) = parse_leb128_u32(remaining)?;
-    
+
     // Adjust location offset for length since it starts after the id byte
     let length_value = length.value;
     let length_len = length.location.length;
-    let length_with_offset = Located::new(
-        length_value,
-        SourceLocation::new(1, length_len)
-    );
-    
+    let length_with_offset = Located::new(length_value, SourceLocation::new(1, length_len));
+
     Ok((remaining, (id, length_with_offset)))
 }
 
