@@ -3,6 +3,10 @@ name = "wasmly"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "wasmly"
+path = "src/main.rs"
+
 [dependencies]
 nom = { version = "8", default-features = false }
 

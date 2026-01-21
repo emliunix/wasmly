@@ -18,7 +18,7 @@ pub fn parse_magic(input: Input) -> ParseResult<'_, Located<[u8; 4]>> {
     let offset = base.len() - remaining.len();
     let magic: [u8; 4] = bytes.try_into().unwrap();
 
-    if magic != [0x00, 0x61, 0x73, 0x6D] {
+    if &magic != &[0x00, 0x61, 0x73, 0x6D] {
         return Err(nom::Err::Error(nom::error::Error {
             input: base,
             code: nom::error::ErrorKind::Tag,
@@ -35,7 +35,7 @@ pub fn parse_version(input: Input) -> ParseResult<'_, Located<[u8; 4]>> {
     let offset = base.len() - remaining.len();
     let version: [u8; 4] = bytes.try_into().unwrap();
 
-    if version != [0x01, 0x00, 0x00, 0x00] {
+    if &version != &[0x01, 0x00, 0x00, 0x00] {
         return Err(nom::Err::Error(nom::error::Error {
             input: base,
             code: nom::error::ErrorKind::Verify,

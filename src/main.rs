@@ -1,3 +1,4 @@
+mod binary;
 mod cont;
 mod types;
 
