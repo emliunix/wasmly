@@ -108,7 +108,7 @@ trait InstrCursor<'a> {
 
 impl<'a> InstrCursor<'a> for Vec<Level<'a>> {
     fn instr(&self) -> Option<&'a Instr> {
-        self.last().map(|l| { l.instr() })
+        self.last().map(|l| l.instr())
     }
 
     fn next(&mut self) {
@@ -181,13 +181,13 @@ impl VM {
         let mut cursor_updated = false;
         // execute instr
         match instr {
-            Instr::Unreachable => { }
+            Instr::Unreachable => {}
             Instr::I32Const(i) => self.push_i32(i.clone()),
             Instr::I32Add => {
                 let i1 = self.pop_i32();
                 let i2 = self.pop_i32();
                 self.push_i32(i1 + i2);
-            },
+            }
             Instr::I32Eq => {
                 let a = self.pop_i32();
                 let b = self.pop_i32();
@@ -200,15 +200,15 @@ impl VM {
             &Instr::LocalSet(i) => {
                 let v = stack_val!(self.pop());
                 self.locals[i] = v.clone();
-            },
+            }
             &Instr::LocalTee(i) => {
                 let v = stack_val!(self.pop());
                 self.locals[i] = v.clone();
                 self.push(StackItem::Val(v));
-            },
+            }
             &Instr::LocalGet(i) => {
                 self.push(StackItem::Val(self.locals[i].clone()));
-            },
+            }
             &Instr::Br(l) => {
                 let (label, vals) = self.pop_label(l);
                 vals.into_iter().for_each(|v| self.push(StackItem::Val(v)));
@@ -222,27 +222,36 @@ impl VM {
                     }
                 }
                 cursor_updated = true;
-            },
+            }
             Instr::Loop(bt, instrs) => {
-                self.push(StackItem::Label(Label::Continuation(block_type(&self.types, bt).func_tys().0.len(), cursor.pos())));
+                self.push(StackItem::Label(Label::Continuation(
+                    block_type(&self.types, bt).func_tys().0.len(),
+                    cursor.pos(),
+                )));
                 cursor.push_instrs(instrs);
                 cursor_updated = true;
-            },
+            }
             Instr::Block(bt, instrs) => {
-                self.push(StackItem::Label(Label::Empty(block_type(&self.types, bt).func_tys().1.len(), cursor.pos())));
+                self.push(StackItem::Label(Label::Empty(
+                    block_type(&self.types, bt).func_tys().1.len(),
+                    cursor.pos(),
+                )));
                 cursor.push_instrs(instrs);
                 cursor_updated = true;
-            },
+            }
             Instr::If(bt, instrs_then, instrs_else) => {
                 let b = self.pop_i32();
-                self.push(StackItem::Label(Label::Empty(block_type(&self.types, bt).func_tys().1.len(), cursor.pos())));
+                self.push(StackItem::Label(Label::Empty(
+                    block_type(&self.types, bt).func_tys().1.len(),
+                    cursor.pos(),
+                )));
                 if b != 0 {
                     cursor.push_instrs(instrs_then);
                 } else {
                     cursor.push_instrs(instrs_else);
                 }
                 cursor_updated = true;
-            },
+            }
         }
         if !cursor_updated {
             cursor.next();
@@ -268,18 +277,10 @@ impl VM {
     }
 
     impl_stack_push!(
-        i32, push_i32, I32,
-        i64, push_i64, I64,
-        f32, push_f32, F32,
-        f64, push_f64, F64,
+        i32, push_i32, I32, i64, push_i64, I64, f32, push_f32, F32, f64, push_f64, F64,
     );
 
-    impl_stack_pop!(
-        i32, pop_i32, I32,
-        i64, pop_i64, I64,
-        f32, pop_f32, F32,
-        f64, pop_f64, F64,
-    );
+    impl_stack_pop!(i32, pop_i32, I32, i64, pop_i64, I64, f32, pop_f32, F32, f64, pop_f64, F64,);
 
     fn pop_label(&mut self, mut n_labels: usize) -> (Label, Vec<Val>) {
         let mut i_lbl = None;
@@ -292,14 +293,20 @@ impl VM {
             }
         }
         let i_lbl = i_lbl.unwrap();
-        let n_vals = if let StackItem::Label(lbl) = &self.stack[i_lbl] { lbl.num_rets() } else { panic!("impossible") };
-        let vals = self.stack.drain((self.stack.len()-n_vals)..)
+        let n_vals = if let StackItem::Label(lbl) = &self.stack[i_lbl] {
+            lbl.num_rets()
+        } else {
+            panic!("impossible")
+        };
+        let vals = self
+            .stack
+            .drain((self.stack.len() - n_vals)..)
             .map(|i| match i {
                 StackItem::Val(v) => v,
                 _ => panic!("impossible"),
             })
             .collect::<Vec<Val>>();
-        self.stack.truncate(i_lbl+1);
+        self.stack.truncate(i_lbl + 1);
         let label = {
             match self.stack.pop() {
                 Some(StackItem::Label(lbl)) => lbl,
@@ -321,26 +328,17 @@ mod tests {
     #[test]
     pub fn test() {
         let mut vm = VM::new();
-        vm.run(&vec![
-            Instr::I32Const(1),
-            Instr::I32Const(1),
-            Instr::I32Add,
-        ]);
+        vm.run(&vec![Instr::I32Const(1), Instr::I32Const(1), Instr::I32Add]);
         assert_eq!(Some(Val::I32(2)), vm.result());
     }
 
     #[test]
     pub fn test_block() {
         let mut vm = VM::new();
-        vm.run(&vec![
-            Instr::Block(
-                BlockType::ValTy(Ty::I32),
-                vec![
-                    Instr::I32Const(1),
-                    Instr::I32Const(1),
-                    Instr::I32Add,
-                ]),
-        ]);
+        vm.run(&vec![Instr::Block(
+            BlockType::ValTy(Ty::I32),
+            vec![Instr::I32Const(1), Instr::I32Const(1), Instr::I32Add],
+        )]);
         assert_eq!(Some(Val::I32(2)), vm.result());
     }
 
@@ -348,21 +346,21 @@ mod tests {
     pub fn test_loop() {
         let mut vm = VM::new();
         vm.run(&vec![
-            Instr::Block(BlockType::Empty, vec![
-                Instr::Loop(BlockType::Empty, vec![
-                    Instr::LocalGet(0),
-                    Instr::I32Const(1),
-                    Instr::I32Add,
-                    Instr::LocalTee(0),
-                    Instr::I32Const(3),
-                    Instr::I32Eq,
-                    Instr::If(BlockType::Empty, vec![
-                        Instr::Br(1),
-                    ], vec![
-                        Instr::Br(0),
-                    ]),
-                ])
-            ]),
+            Instr::Block(
+                BlockType::Empty,
+                vec![Instr::Loop(
+                    BlockType::Empty,
+                    vec![
+                        Instr::LocalGet(0),
+                        Instr::I32Const(1),
+                        Instr::I32Add,
+                        Instr::LocalTee(0),
+                        Instr::I32Const(3),
+                        Instr::I32Eq,
+                        Instr::If(BlockType::Empty, vec![Instr::Br(1)], vec![Instr::Br(0)]),
+                    ],
+                )],
+            ),
             Instr::LocalGet(0),
         ]);
         assert_eq!(Some(Val::I32(2)), vm.result());

@@ -1,6 +1,5 @@
 use std::ops::Index;
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ty {
     I32,
@@ -50,7 +49,7 @@ pub enum Val {
     NULL(Ty),
 }
 
-pub fn block_type<I: Index<usize, Output=Ty>>(ind_tys: &I, ty: &BlockType) -> Ty {
+pub fn block_type<I: Index<usize, Output = Ty>>(ind_tys: &I, ty: &BlockType) -> Ty {
     match ty {
         BlockType::Empty => Ty::Func(vec![], vec![]),
         BlockType::Index(i) => ind_tys[*i].clone(),

@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+nom = { version = "8", default-features = false }
+
+[dev-dependencies]
+nom = "8"
